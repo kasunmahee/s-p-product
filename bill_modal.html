@@ -1,0 +1,32 @@
+<!-- Bill Details Modal -->
+<div id="bill-modal"
+    class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4 backdrop-blur-sm">
+    <div class="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+        <div class="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+            <div>
+                <h3 class="font-bold text-lg text-gray-800" id="bill-modal-shop">Shop Name</h3>
+                <p class="text-xs text-gray-500" id="bill-modal-date">Date</p>
+            </div>
+            <button onclick="closeModal('bill-modal')" class="text-gray-400 hover:text-gray-600">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+
+        <div class="p-4 overflow-y-auto flex-1">
+            <div class="space-y-3" id="bill-modal-items">
+                <!-- Items go here -->
+            </div>
+        </div>
+
+        <div class="p-4 bg-gray-50 border-t border-gray-100">
+            <div class="flex justify-between items-center mb-1">
+                <span class="text-sm font-medium text-gray-600">Total</span>
+                <span class="text-lg font-bold text-gray-900" id="bill-modal-total">Rs 0.00</span>
+            </div>
+            <div class="flex justify-between items-center text-xs text-gray-400">
+                <span>Total Cost</span>
+                <span id="bill-modal-cost">Rs 0.00</span>
+            </div>
+        </div>
+    </div>
+</div>

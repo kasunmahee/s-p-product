@@ -40,7 +40,10 @@ const router = {
             if (viewId === 'shops') await shops.renderList();
             if (viewId === 'products') await products.renderList();
             if (viewId === 'billing') await billing.init();
-            if (viewId === 'history') await historyView.renderList();
+            if (viewId === 'history') {
+                await historyView.loadFilters();
+                await historyView.renderList();
+            }
         }
     }
 };
@@ -96,7 +99,8 @@ const dashboard = {
         for (const bill of recentBills) {
             const shop = await db.shops.get(bill.shopId);
             const div = document.createElement('div');
-            div.className = 'bg-white p-3 rounded-xl border border-gray-100 flex justify-between items-center';
+            div.className = 'bg-white p-3 rounded-xl border border-gray-100 flex justify-between items-center cursor-pointer hover:bg-gray-50 transition';
+            div.onclick = () => billViewer.open(bill.id);
             div.innerHTML = `
                 <div class="flex items-center gap-3">
                     <div class="bg-blue-50 p-2 rounded-lg text-blue-600">
@@ -300,6 +304,7 @@ const billing = {
             opt.value = p.id;
             opt.textContent = `${p.name} (Rs ${p.sellingPrice})`;
             opt.dataset.price = p.sellingPrice;
+            opt.dataset.cost = p.costPrice; // track cost
             opt.dataset.name = p.name;
             prodSelect.appendChild(opt);
         });
@@ -318,6 +323,7 @@ const billing = {
         if (!productId || !qty || qty <= 0) return utils.toast('Select valid product and quantity', 'error');
 
         const price = parseFloat(prodSelect.options[prodSelect.selectedIndex].dataset.price);
+        const cost = parseFloat(prodSelect.options[prodSelect.selectedIndex].dataset.cost) || 0;
         const name = prodSelect.options[prodSelect.selectedIndex].dataset.name;
 
         // Check if exists
@@ -329,6 +335,7 @@ const billing = {
                 productId,
                 name,
                 price,
+                cost,
                 quantity: qty,
                 total: price * qty
             });
@@ -377,11 +384,13 @@ const billing = {
         if (appState.cart.length === 0) return utils.toast('Cart is empty', 'error');
 
         const totalAmount = appState.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+        const totalCost = appState.cart.reduce((sum, item) => sum + (item.cost * item.quantity), 0);
 
         try {
             const billId = await db.bills.add({
                 shopId,
                 totalAmount,
+                totalCost,
                 date: new Date()
             });
 
@@ -389,7 +398,8 @@ const billing = {
                 billId,
                 productId: item.productId,
                 quantity: item.quantity,
-                priceAtTime: item.price
+                priceAtTime: item.price,
+                costAtTime: item.cost
             }));
 
             await db.billItems.bulkAdd(billItems);
@@ -403,44 +413,249 @@ const billing = {
     }
 };
 
+
+// Bill Viewer Module
+const billViewer = {
+    open: async (billId) => {
+        const bill = await db.bills.get(billId);
+        if (!bill) return utils.toast('Bill not found', 'error');
+
+        const shop = await db.shops.get(bill.shopId);
+        const items = await db.billItems.where('billId').equals(billId).toArray();
+        const productsMap = new Map((await db.products.toArray()).map(p => [p.id, p]));
+
+        // Populate Modal
+        document.getElementById('bill-modal-shop').textContent = shop ? shop.name : 'Unknown Shop';
+        document.getElementById('bill-modal-date').textContent = new Date(bill.date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+        document.getElementById('bill-modal-total').textContent = utils.formatCurrency(bill.totalAmount);
+
+        // Add Download Button
+        const headerAction = document.getElementById('bill-modal-action');
+        if (!headerAction) {
+            const header = document.querySelector('#bill-modal .flex.justify-between.items-center');
+            const div = document.createElement('div');
+            div.id = 'bill-modal-action';
+            div.className = 'flex gap-2';
+            // Move close button inside
+            const closeBtn = header.querySelector('button');
+
+            const downloadBtn = document.createElement('button');
+            downloadBtn.className = 'text-blue-500 hover:text-blue-700';
+            downloadBtn.innerHTML = '<i data-lucide="download" class="w-5 h-5"></i>';
+            downloadBtn.onclick = () => billViewer.downloadPDF(bill.id);
+
+            div.appendChild(downloadBtn);
+            div.appendChild(closeBtn);
+            header.appendChild(div);
+        } else {
+            // Update onclick
+            const btn = headerAction.querySelector('button');
+            btn.onclick = () => billViewer.downloadPDF(bill.id);
+        }
+
+        // Show Cost
+        const costEl = document.getElementById('bill-modal-cost');
+        if (costEl) costEl.textContent = bill.totalCost !== undefined ? utils.formatCurrency(bill.totalCost) : 'N/A';
+
+        const listEl = document.getElementById('bill-modal-items');
+        listEl.innerHTML = '';
+
+        items.forEach(item => {
+            const prod = productsMap.get(item.productId);
+            const name = prod ? prod.name : 'Unknown Product';
+            const div = document.createElement('div');
+            div.className = 'flex justify-between items-center text-sm border-b border-gray-50 pb-2 last:border-0';
+            div.innerHTML = `
+                <div>
+                    <div class="font-medium text-gray-800">${name}</div>
+                    <div class="text-xs text-gray-500">${item.quantity} x ${utils.formatCurrency(item.priceAtTime)}</div>
+                </div>
+                <div class="text-right">
+                    <div class="font-semibold text-gray-700">${utils.formatCurrency(item.quantity * item.priceAtTime)}</div>
+                    ${item.costAtTime ? `<div class="text-[10px] text-gray-400">Cost: ${utils.formatCurrency(item.quantity * item.costAtTime)}</div>` : ''}
+                </div>
+                <!-- Return Action -->
+                <button onclick="billViewer.returnItem(${item.id}, ${bill.id}, '${name}')" class="ml-2 text-red-500 hover:bg-red-50 p-1.5 rounded-lg" title="Return Item">
+                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                </button>
+            `;
+            listEl.appendChild(div);
+        });
+
+        lucide.createIcons();
+        openModal('bill-modal');
+    },
+    returnItem: async (itemId, billId, itemName) => {
+        const item = await db.billItems.get(itemId);
+        if (!item) return;
+
+        const returnQty = prompt(`How many ${itemName || 'items'} to return? (Max: ${item.quantity})`, '1');
+        if (returnQty === null) return;
+
+        const qty = parseInt(returnQty);
+        if (isNaN(qty) || qty <= 0 || qty > item.quantity) {
+            return utils.toast('Invalid quantity', 'error');
+        }
+
+        // Calculate refund amounts
+        const refundAmount = qty * item.priceAtTime;
+        const refundCost = qty * (item.costAtTime || 0);
+
+        // Update Bill Item
+        if (qty === item.quantity) {
+            await db.billItems.delete(itemId);
+        } else {
+            await db.billItems.update(itemId, { quantity: item.quantity - qty });
+        }
+
+        // Update Bill Totals
+        const bill = await db.bills.get(billId);
+        await db.bills.update(billId, {
+            totalAmount: bill.totalAmount - refundAmount,
+            totalCost: (bill.totalCost || 0) - refundCost
+        });
+
+        utils.toast('Item returned successfully');
+        billViewer.open(billId); // Refresh modal
+
+        // Refresh background lists if open
+        if (!document.getElementById('view-dashboard').classList.contains('hidden')) dashboard.load();
+        if (!document.getElementById('view-history').classList.contains('hidden')) historyView.renderList();
+    },
+    downloadPDF: async (billId) => {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+
+        const bill = await db.bills.get(billId);
+        const shop = await db.shops.get(bill.shopId);
+        const items = await db.billItems.where('billId').equals(billId).toArray();
+        const productsMap = new Map((await db.products.toArray()).map(p => [p.id, p]));
+
+        // Header
+        doc.setFontSize(18);
+        doc.text("POS Mini - Sales Invoice", 105, 15, null, null, "center");
+
+        doc.setFontSize(10);
+        doc.text(`Shop: ${shop ? shop.name : 'Unknown Shop'}`, 14, 25);
+        doc.text(`Date: ${new Date(bill.date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}`, 14, 30);
+        doc.text(`Bill ID: #${bill.id}`, 14, 35);
+
+        // Table Data
+        const body = items.map(item => {
+            const prod = productsMap.get(item.productId);
+            return [
+                prod ? prod.name : 'Unknown',
+                item.quantity,
+                parseFloat(item.priceAtTime).toFixed(2),
+                (item.quantity * item.priceAtTime).toFixed(2)
+            ];
+        });
+
+        // Generate Table
+        doc.autoTable({
+            head: [['Product', 'Qty', 'Price', 'Total']],
+            body: body,
+            startY: 40,
+            theme: 'striped',
+            headStyles: { fillColor: [37, 99, 235] }
+        });
+
+        // Totals
+        const finalY = doc.lastAutoTable.finalY + 10;
+        doc.setFontSize(12);
+        doc.setFont(undefined, 'bold');
+        doc.text(`Grand Total: Rs ${bill.totalAmount.toFixed(2)}`, 195, finalY, null, null, "right");
+
+        // Save
+        doc.save(`Invoice_${bill.id}_${shop ? shop.name : 'Shop'}.pdf`);
+    }
+};
+
 // History Module
 const historyView = {
+    loadFilters: async () => {
+        const shopsList = await db.shops.toArray();
+        const select = document.getElementById('history-filter-shop');
+        if (!select) return;
+
+        // Keep first option
+        select.innerHTML = '<option value="">All Shops</option>';
+        shopsList.forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s.id;
+            opt.textContent = s.name;
+            select.appendChild(opt);
+        });
+    },
     renderList: async () => {
-        const query = document.getElementById('history-search').value.toLowerCase();
+        const shopFilterEl = document.getElementById('history-filter-shop');
+        const shopFilter = shopFilterEl ? shopFilterEl.value : '';
+
+        const dateStartEl = document.getElementById('history-date-start');
+        const dateStart = dateStartEl ? dateStartEl.value : '';
+
+        const dateEndEl = document.getElementById('history-date-end');
+        const dateEnd = dateEndEl ? dateEndEl.value : '';
+
+        // Base Query
         let bills = await db.bills.reverse().toArray();
+
+        // Filter Logic
+        bills = bills.filter(b => {
+            let match = true;
+
+            // Shop Filter
+            if (shopFilter && b.shopId != shopFilter) match = false;
+
+            // Date Filter
+            if (match && (dateStart || dateEnd)) {
+                const billDate = new Date(b.date);
+                billDate.setHours(0, 0, 0, 0);
+
+                if (dateStart) {
+                    const start = new Date(dateStart);
+                    start.setHours(0, 0, 0, 0);
+                    if (billDate < start) match = false;
+                }
+
+                if (dateEnd && match) {
+                    const end = new Date(dateEnd);
+                    end.setHours(23, 59, 59, 999);
+                    if (billDate > end) match = false;
+                }
+            }
+
+            return match;
+        });
 
         const container = document.getElementById('history-list');
         container.innerHTML = '';
-
-        // Filter in memory for simplicity (can optimize with Dexie queries for large datasets)
-        if (query) {
-            // We need to fetch shop names to filter by name
-            // For simplicity, we'll just filter by date string match or fetch all shops first
-            const shopsMap = new Map((await db.shops.toArray()).map(s => [s.id, s.name.toLowerCase()]));
-
-            bills = bills.filter(b => {
-                const shopName = shopsMap.get(b.shopId) || '';
-                const dateStr = new Date(b.date).toLocaleDateString();
-                return shopName.includes(query) || dateStr.includes(query);
-            });
-        }
 
         if (bills.length === 0) {
             container.innerHTML = '<div class="text-center py-10 text-gray-400">No transactions found</div>';
             return;
         }
 
+        // Pre-fetch all needed shops for efficiency (N+1 prob solution)
+        const allShopIds = [...new Set(bills.map(b => b.shopId))];
+        const shopObjects = await db.shops.where('id').anyOf(allShopIds).toArray();
+        const shopMap = new Map(shopObjects.map(s => [s.id, s]));
+
         for (const bill of bills) {
-            const shop = await db.shops.get(bill.shopId);
+            const shop = shopMap.get(bill.shopId);
             const div = document.createElement('div');
-            div.className = 'bg-white p-4 rounded-xl shadow-sm border border-gray-100';
+            div.className = 'bg-white p-4 rounded-xl shadow-sm border border-gray-100 cursor-pointer hover:bg-gray-50 transition';
+            div.onclick = () => billViewer.open(bill.id);
             div.innerHTML = `
                 <div class="flex justify-between items-start mb-2">
                     <div>
                         <h4 class="font-bold text-gray-800">${shop ? shop.name : 'Unknown Shop'}</h4>
                         <p class="text-xs text-gray-500">${new Date(bill.date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</p>
                     </div>
-                    <span class="font-bold text-green-600 bg-green-50 px-2 py-1 rounded-lg text-sm">${utils.formatCurrency(bill.totalAmount)}</span>
+                    <div class="text-right">
+                        <span class="block font-bold text-green-600 bg-green-50 px-2 py-1 rounded-lg text-sm">${utils.formatCurrency(bill.totalAmount)}</span>
+                        ${bill.totalCost !== undefined ? `<span class="block text-xs text-gray-400 mt-1">Cost: ${utils.formatCurrency(bill.totalCost)}</span>` : ''}
+                    </div>
                 </div>
                 <div class="text-xs text-gray-400">Bill ID: #${bill.id}</div>
             `;
