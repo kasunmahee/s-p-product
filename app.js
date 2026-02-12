@@ -413,7 +413,6 @@ const billing = {
     }
 };
 
-
 // Bill Viewer Module
 const billViewer = {
     open: async (billId) => {
@@ -429,28 +428,41 @@ const billViewer = {
         document.getElementById('bill-modal-date').textContent = new Date(bill.date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
         document.getElementById('bill-modal-total').textContent = utils.formatCurrency(bill.totalAmount);
 
-        // Add Download Button
+        // Add Download & Delete Buttons
         const headerAction = document.getElementById('bill-modal-action');
         if (!headerAction) {
             const header = document.querySelector('#bill-modal .flex.justify-between.items-center');
             const div = document.createElement('div');
             div.id = 'bill-modal-action';
-            div.className = 'flex gap-2';
+            div.className = 'flex gap-2 items-center';
+
             // Move close button inside
             const closeBtn = header.querySelector('button');
 
             const downloadBtn = document.createElement('button');
-            downloadBtn.className = 'text-blue-500 hover:text-blue-700';
+            downloadBtn.className = 'text-blue-500 hover:text-blue-700 p-1';
             downloadBtn.innerHTML = '<i data-lucide="download" class="w-5 h-5"></i>';
             downloadBtn.onclick = () => billViewer.downloadPDF(bill.id);
 
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'text-red-500 hover:text-red-700 ml-2 p-1';
+            deleteBtn.innerHTML = '<i data-lucide="trash-2" class="w-5 h-5"></i>';
+            deleteBtn.onclick = () => billViewer.deleteBill(bill.id);
+
             div.appendChild(downloadBtn);
-            div.appendChild(closeBtn);
+            div.appendChild(deleteBtn);
+            // Check if closeBtn exists and isn't already inside (edge case)
+            if (closeBtn && closeBtn.parentNode === header) div.appendChild(closeBtn);
+
             header.appendChild(div);
         } else {
-            // Update onclick
-            const btn = headerAction.querySelector('button');
-            btn.onclick = () => billViewer.downloadPDF(bill.id);
+            // Update onclicks for existing buttons
+            const btns = headerAction.querySelectorAll('button');
+            // Expected order: Download(0), Delete(1), Close(2)
+            if (btns.length >= 2) {
+                btns[0].onclick = () => billViewer.downloadPDF(bill.id);
+                btns[1].onclick = () => billViewer.deleteBill(bill.id);
+            }
         }
 
         // Show Cost
@@ -485,6 +497,7 @@ const billViewer = {
         lucide.createIcons();
         openModal('bill-modal');
     },
+
     returnItem: async (itemId, billId, itemName) => {
         const item = await db.billItems.get(itemId);
         if (!item) return;
@@ -522,7 +535,9 @@ const billViewer = {
         if (!document.getElementById('view-dashboard').classList.contains('hidden')) dashboard.load();
         if (!document.getElementById('view-history').classList.contains('hidden')) historyView.renderList();
     },
+
     downloadPDF: async (billId) => {
+        if (!window.jspdf) return utils.toast('PDF Library not loaded', 'error');
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
 
@@ -568,6 +583,19 @@ const billViewer = {
 
         // Save
         doc.save(`Invoice_${bill.id}_${shop ? shop.name : 'Shop'}.pdf`);
+    },
+
+    deleteBill: async (billId) => {
+        if (confirm('Are you sure you want to delete this bill? This cannot be undone.')) {
+            await db.bills.delete(billId);
+            await db.billItems.where('billId').equals(billId).delete();
+            utils.toast('Bill deleted successfully');
+            closeModal('bill-modal');
+
+            // Refresh
+            if (!document.getElementById('view-dashboard').classList.contains('hidden')) dashboard.load();
+            if (!document.getElementById('view-history').classList.contains('hidden')) historyView.renderList();
+        }
     }
 };
 
