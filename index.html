@@ -18,6 +18,10 @@
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
 
+    <!-- jsPDF for PDF generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -239,13 +243,36 @@
         <!-- History View -->
         <section id="view-history" class="page-section hidden">
             <div class="mb-6">
-                <h2 class="text-xl font-bold text-gray-800">History</h2>
-                <div class="mt-2 relative">
-                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <i data-lucide="search" class="w-4 h-4 text-gray-500"></i>
+                <h2 class="text-xl font-bold text-gray-800 mb-4">History</h2>
+
+                <!-- Filters -->
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 space-y-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-500 mb-1">Filter by Shop</label>
+                        <select id="history-filter-shop"
+                            class="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2.5">
+                            <option value="">All Shops</option>
+                        </select>
                     </div>
-                    <input type="text" id="history-search" placeholder="Search shops or date..."
-                        class="pl-10 w-full bg-white border border-gray-200 rounded-lg py-2 text-sm focus:outline-none focus:border-blue-500">
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-500 mb-1">From Date</label>
+                            <input type="date" id="history-date-start"
+                                class="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2.5">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-500 mb-1">To Date</label>
+                            <input type="date" id="history-date-end"
+                                class="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2.5">
+                        </div>
+                    </div>
+
+                    <button onclick="historyView.renderList()"
+                        class="w-full bg-blue-50 text-blue-600 font-semibold py-2 rounded-lg hover:bg-blue-100 transition flex items-center justify-center gap-2">
+                        <i data-lucide="filter" class="w-4 h-4"></i>
+                        Apply Filters
+                    </button>
                 </div>
             </div>
 
@@ -370,6 +397,39 @@
                 <button onclick="products.save()"
                     class="w-full bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition mt-2">Save
                     Product</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bill Details Modal -->
+    <div id="bill-modal"
+        class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl flex flex-col h-[60vh]">
+            <div class="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                <div>
+                    <h3 class="font-bold text-lg text-gray-800" id="bill-modal-shop">Shop Name</h3>
+                    <p class="text-xs text-gray-500" id="bill-modal-date">Date</p>
+                </div>
+                <button onclick="closeModal('bill-modal')" class="text-gray-400 hover:text-gray-600">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="p-4 overflow-y-auto flex-1">
+                <div class="space-y-3" id="bill-modal-items">
+                    <!-- Items go here -->
+                </div>
+            </div>
+
+            <div class="p-4 bg-gray-50 border-t border-gray-100">
+                <div class="flex justify-between items-center mb-1">
+                    <span class="text-sm font-medium text-gray-600">Total</span>
+                    <span class="text-lg font-bold text-gray-900" id="bill-modal-total">Rs 0.00</span>
+                </div>
+                <div class="flex justify-between items-center text-xs text-gray-400">
+                    <span>Total Cost</span>
+                    <span id="bill-modal-cost">Rs 0.00</span>
+                </div>
             </div>
         </div>
     </div>
