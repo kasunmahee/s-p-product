@@ -23,9 +23,23 @@
                 <span class="text-sm font-medium text-gray-600">Total</span>
                 <span class="text-lg font-bold text-gray-900" id="bill-modal-total">Rs 0.00</span>
             </div>
-            <div class="flex justify-between items-center text-xs text-gray-400">
-                <span>Total Cost</span>
-                <span id="bill-modal-cost">Rs 0.00</span>
+            <div class="flex justify-between items-center text-xs text-gray-500 mb-1">
+                <span>Paid Amount</span>
+                <span id="bill-modal-paid" class="text-green-600 font-semibold">Rs 0.00</span>
+            </div>
+            <div class="flex justify-between items-center text-sm mb-3">
+                <span class="font-medium text-gray-700">Balance Due</span>
+                <span id="bill-modal-balance" class="text-red-600 font-bold">Rs 0.00</span>
+            </div>
+            <div class="grid grid-cols-2 gap-2 mt-3">
+                <button id="bill-modal-payment-btn" class="w-full bg-green-600 text-white font-bold py-2.5 rounded-xl shadow-sm hover:bg-green-700 transition flex items-center justify-center gap-2">
+                    <i data-lucide="credit-card" class="w-4 h-4"></i>
+                    Pay
+                </button>
+                <button id="bill-modal-payment-history-btn" class="w-full bg-blue-50 text-blue-600 font-bold py-2.5 rounded-xl shadow-sm hover:bg-blue-100 transition flex items-center justify-center gap-2 text-sm">
+                    <i data-lucide="list" class="w-4 h-4"></i>
+                    History
+                </button>
             </div>
         </div>
     </div>

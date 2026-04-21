@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>POS Mini - Shop Management</title>
+    <title>S&P Product - Shop Management</title>
 
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -12,8 +12,8 @@
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
-    <!-- Dexie.js for IndexedDB -->
-    <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
+    <!-- Supabase JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -82,7 +82,7 @@
             <div class="bg-blue-600 p-1.5 rounded-lg">
                 <i data-lucide="shopping-bag" class="text-white w-5 h-5"></i>
             </div>
-            <h1 class="text-lg font-bold text-gray-800">POS Mini</h1>
+            <h1 class="text-lg font-bold text-gray-800">S&P Product</h1>
         </div>
         <button id="syncButton" class="p-2 text-gray-500 hover:text-blue-600 transition hidden">
             <i data-lucide="refresh-cw" class="w-5 h-5"></i>
@@ -268,11 +268,18 @@
                         </div>
                     </div>
 
-                    <button onclick="historyView.renderList()"
-                        class="w-full bg-blue-50 text-blue-600 font-semibold py-2 rounded-lg hover:bg-blue-100 transition flex items-center justify-center gap-2">
-                        <i data-lucide="filter" class="w-4 h-4"></i>
-                        Apply Filters
-                    </button>
+                    <div class="flex gap-2">
+                        <button onclick="historyView.renderList()"
+                            class="flex-1 bg-blue-50 text-blue-600 font-semibold py-2 rounded-lg hover:bg-blue-100 transition flex items-center justify-center gap-2">
+                            <i data-lucide="filter" class="w-4 h-4"></i>
+                            Apply Filters
+                        </button>
+                        <button onclick="historyView.downloadReport()"
+                            class="flex-1 bg-green-50 text-green-600 font-semibold py-2 rounded-lg hover:bg-green-100 transition flex items-center justify-center gap-2">
+                            <i data-lucide="download" class="w-4 h-4"></i>
+                            PDF Report
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -426,10 +433,113 @@
                     <span class="text-sm font-medium text-gray-600">Total</span>
                     <span class="text-lg font-bold text-gray-900" id="bill-modal-total">Rs 0.00</span>
                 </div>
-                <div class="flex justify-between items-center text-xs text-gray-400">
-                    <span>Total Cost</span>
-                    <span id="bill-modal-cost">Rs 0.00</span>
+                <div class="flex justify-between items-center text-xs text-gray-500 mb-1">
+                    <span>Paid Amount</span>
+                    <span id="bill-modal-paid" class="text-green-600 font-semibold">Rs 0.00</span>
                 </div>
+                <div class="flex justify-between items-center text-sm mb-3">
+                    <span class="font-medium text-gray-700">Balance Due</span>
+                    <span id="bill-modal-balance" class="text-red-600 font-bold">Rs 0.00</span>
+                </div>
+                <div class="grid grid-cols-2 gap-2 mt-3">
+                    <button id="bill-modal-payment-btn" class="w-full bg-green-600 text-white font-bold py-2.5 rounded-xl shadow-sm hover:bg-green-700 transition flex items-center justify-center gap-2">
+                        <i data-lucide="credit-card" class="w-4 h-4"></i>
+                        Pay
+                    </button>
+                    <button id="bill-modal-payment-history-btn" class="w-full bg-blue-50 text-blue-600 font-bold py-2.5 rounded-xl shadow-sm hover:bg-blue-100 transition flex items-center justify-center gap-2 text-sm">
+                        <i data-lucide="list" class="w-4 h-4"></i>
+                        History
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Payment Options Modal -->
+    <div id="payment-modal" class="fixed inset-0 bg-black/50 z-[60] hidden flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            <div class="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                <h3 class="font-bold text-lg text-gray-800">Payment Options</h3>
+                <button onclick="closeModal('payment-modal')" class="text-gray-400 hover:text-gray-600">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            
+            <!-- Summary -->
+            <div class="p-4 bg-blue-50 text-center border-b border-blue-100">
+                <p class="text-xs text-blue-600 font-semibold mb-1 uppercase tracking-wider">Balance Due</p>
+                <div class="text-2xl font-bold text-gray-900" id="payment-modal-due">Rs 0.00</div>
+                <div class="text-xs text-gray-500 mt-1">Total Bill: <span id="payment-modal-total">Rs 0.00</span></div>
+            </div>
+
+            <div class="p-4 overflow-y-auto flex-1">
+                <!-- Tabs -->
+                <div class="flex border-b border-gray-200 mb-4">
+                    <button id="tab-btn-amount" class="flex-1 py-2 text-sm font-semibold text-blue-600 border-b-2 border-blue-600" onclick="paymentModule.switchTab('amount')">Pay by Amount</button>
+                    <button id="tab-btn-items" class="flex-1 py-2 text-sm font-semibold text-gray-500 border-b-2 border-transparent hover:text-gray-700" onclick="paymentModule.switchTab('items')">Pay by Items</button>
+                </div>
+
+                <!-- Amount Split View -->
+                <div id="payment-tab-amount" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Enter Amount to Pay</label>
+                        <input type="number" id="payment-input-amount" class="w-full bg-gray-50 border border-gray-300 rounded-lg p-3 text-lg font-bold focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition" placeholder="0.00">
+                    </div>
+                </div>
+
+                <!-- Items Split View -->
+                <div id="payment-tab-items" class="space-y-3 hidden">
+                    <p class="text-xs text-gray-500 text-center mb-2">Select items to calculate payment amount</p>
+                    <div id="payment-items-list" class="space-y-2 max-h-48 overflow-y-auto p-1">
+                        <!-- Items populated via JS -->
+                    </div>
+                    <div class="flex justify-between items-center bg-gray-50 p-2 rounded-lg border border-gray-200 mt-2">
+                        <span class="text-sm font-medium">Selected Total:</span>
+                        <span class="font-bold text-blue-600" id="payment-items-total">Rs 0.00</span>
+                    </div>
+                </div>
+
+                <!-- Method selection common to both -->
+                <div class="mt-4 pt-4 border-t border-gray-100">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button class="payment-method-btn active bg-blue-50 border-blue-200 text-blue-700 border rounded-lg py-2 text-sm font-semibold transition" onclick="paymentModule.setMethod('Cash', this)">Cash</button>
+                        <button class="payment-method-btn bg-gray-50 border-gray-200 text-gray-600 border rounded-lg py-2 text-sm font-semibold hover:bg-gray-100 transition" onclick="paymentModule.setMethod('Card', this)">Card</button>
+                        <button class="payment-method-btn bg-gray-50 border-gray-200 text-gray-600 border rounded-lg py-2 text-sm font-semibold hover:bg-gray-100 transition" onclick="paymentModule.setMethod('Transfer', this)">Bank</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-4 bg-gray-50 border-t border-gray-100">
+                <button onclick="paymentModule.save()" class="w-full bg-blue-600 text-white font-bold py-3 rounded-xl shadow-lg hover:bg-blue-700 transition flex items-center justify-center gap-2">
+                    <i data-lucide="check-circle" class="w-5 h-5"></i>
+                    Confirm Payment
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Payment History Modal -->
+    <div id="payment-history-modal" class="fixed inset-0 bg-black/50 z-[70] hidden flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
+            <div class="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                <h3 class="font-bold text-lg text-gray-800">Payment History</h3>
+                <div class="flex items-center gap-2">
+                    <button id="phistory-download-btn" class="text-blue-500 hover:text-blue-700 p-1" title="Download PDF">
+                        <i data-lucide="download" class="w-5 h-5"></i>
+                    </button>
+                    <button onclick="closeModal('payment-history-modal')" class="text-gray-400 hover:text-gray-600 p-1">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="p-4 overflow-y-auto flex-1">
+                <div id="payment-history-list" class="space-y-3">
+                    <div class="text-center text-gray-400 text-sm py-8">Loading history...</div>
+                </div>
+            </div>
+            <div class="p-4 bg-gray-50 border-t border-gray-100 text-center text-xs text-gray-700 font-semibold" id="payment-history-summary">
+                --
             </div>
         </div>
     </div>
